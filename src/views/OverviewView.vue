@@ -3,11 +3,13 @@ import { computed } from 'vue'
 import Button from 'primevue/button'
 import ProgressBar from 'primevue/progressbar'
 import Tag from 'primevue/tag'
+import Message from 'primevue/message'
 import { useImpositionStore } from '../stores/imposition'
 
 const store = useImpositionStore()
 const errors = computed(() => store.validations.filter((item) => item.severity === '错误').length)
 const pendingProof = computed(() => store.proofs.find((proof) => proof.decision === '待决定'))
+const pendingRelease = computed(() => !store.canRelease.ok || store.releaseStatus === '待复核')
 </script>
 
 <template>
@@ -16,6 +18,12 @@ const pendingProof = computed(() => store.proofs.find((proof) => proof.decision 
       <div><p class="eyebrow">PRINT PRODUCTION / 印刷生产</p><h1>拼版预检与打样总览</h1><p class="muted">在当前拼版版本进入生产前，集中处理页序、出血、色彩与装订风险。</p></div>
       <div class="actions"><Button label="运行完整预检" icon="pi pi-check-circle" outlined /><Button label="进入拼版工作区" icon="pi pi-th-large" @click="$router.push('/imposition')" /></div>
     </div>
+
+    <Message v-if="pendingRelease" severity="warn" :closable="false" class="mb-3">
+      <template v-if="!store.canRelease.ok">旧稿缺工艺依据，当前为待复核状态，无法放行导出。</template>
+      <template v-else>放行来源 {{ store.basisHash }} 尚未确认或已失效（{{ store.releaseStatus }}），请主管确认后再导出。</template>
+      <Button label="前往放行" size="small" class="ml-2" @click="$router.push('/imposition')" />
+    </Message>
 
     <div class="metric-grid">
       <article class="metric"><span>页面文件</span><strong>{{ store.pages.length }}</strong><small>{{ store.positions.length }} 个已排版位</small></article>
@@ -30,8 +38,8 @@ const pendingProof = computed(() => store.proofs.find((proof) => proof.decision 
         <div class="project-card">
           <div>
             <strong>《潮汐来信》上海巡演节目册</strong>
-            <p>成品 210 × 297mm · 8P · 骑马订 · 720 × 1020mm 对开纸</p>
-            <div class="specs"><span>CMYK + 专色</span><span>纵向纸纹</span><span>PDF/X-4</span><span>色彩控制条已配置</span></div>
+            <p>成品 210 × 297mm · 8P · {{ store.binding }} · 720 × 1020mm 对开纸</p>
+            <div class="specs"><span>放行来源 {{ store.basisHash }}</span><span>书脊侧出血 {{ store.requiredBleed }}mm</span><span>CMYK + 专色</span><span>PDF/X-4</span><span>色彩控制条已配置</span></div>
           </div>
           <Button label="打开拼版" icon="pi pi-arrow-right" @click="$router.push('/imposition')" />
         </div>
@@ -70,6 +78,8 @@ const pendingProof = computed(() => store.proofs.find((proof) => proof.decision 
 
 <style scoped>
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mb-3 { margin-bottom: 12px; }
+.ml-2 { margin-left: 8px; }
 .metric .error { color: #b84e35; }
 .overview-grid { display: grid; grid-template-columns: minmax(0,1fr) 350px; gap: 14px; align-items: start; }
 .project-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px; }

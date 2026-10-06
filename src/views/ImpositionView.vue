@@ -6,12 +6,18 @@ import Slider from 'primevue/slider'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import ImpositionCanvas from '../components/ImpositionCanvas.vue'
+import ReleaseBasisPanel from '../components/ReleaseBasisPanel.vue'
 import { useImpositionStore } from '../stores/imposition'
+import type { BindingType } from '../domain/release'
 
 const store = useImpositionStore()
 const sideOptions = [
   { label: '正面', value: 'front' },
   { label: '反面', value: 'back' },
+]
+const bindingOptions = [
+  { label: '骑马订', value: '骑马订' },
+  { label: '胶装', value: '胶装' },
 ]
 const selected = computed(() => store.positions.find((item) => item.id === store.selectedPosition))
 const activeValidations = computed(() => store.validations.filter((item) => !item.pageNo || item.pageNo === selected.value?.pageNo || sideContains(item.pageNo)))
@@ -28,6 +34,15 @@ function locate(pageNo?: number) {
     store.side = position.front ? 'front' : 'back'
   }
 }
+
+function swapOrder() {
+  // 页序调整：交换 P4/P5，只让受牵连跨页与出血结论重算
+  const next = [...store.pageOrder]
+  const i4 = next.indexOf(4)
+  const i5 = next.indexOf(5)
+  if (i4 >= 0 && i5 >= 0) [next[i4], next[i5]] = [next[i5], next[i4]]
+  store.reorderPages(next)
+}
 </script>
 
 <template>
@@ -37,12 +52,17 @@ function locate(pageNo?: number) {
       <div class="actions"><Button label="批量校验" icon="pi pi-check-circle" outlined /><Button label="保存拼版版本" icon="pi pi-save" @click="store.revision = `R${Number(store.revision.slice(1)) + 1}`" /></div>
     </div>
 
+    <ReleaseBasisPanel />
+
     <Message v-if="store.validations.length" severity="warn" :closable="false" class="mb-3">
       当前版本有 {{ store.validations.filter((item) => item.severity === '错误').length }} 个阻断错误和 {{ store.validations.filter((item) => item.severity === '警告').length }} 个警告。
     </Message>
 
     <div class="toolbar panel">
       <SelectButton v-model="store.side" :options="sideOptions" optionLabel="label" optionValue="value" />
+      <SelectButton :model-value="store.binding" :options="bindingOptions" optionLabel="label" optionValue="value" @change="(e) => store.setBinding(e.value as BindingType)" />
+      <Button label="交换 P4/P5 页序" icon="pi pi-sort-alt" size="small" outlined @click="swapOrder" />
+      <Button label="复位旧稿" icon="pi pi-history" size="small" text @click="store.markLegacyDraft" />
       <span class="muted">缩放 {{ store.zoom }}%</span>
       <Slider v-model="store.zoom" :min="35" :max="100" :step="5" style="width:150px" />
       <span class="paper-spec">720 × 1020mm · 出血 3mm · 安全区 5mm · {{ store.locked ? '基线只读' : '编辑中' }}</span>
@@ -71,6 +91,7 @@ function locate(pageNo?: number) {
             :zoom="store.zoom"
             :selected="store.selectedPosition"
             :validations="store.validations"
+            :binding="store.binding"
             @select="store.selectedPosition = $event"
             @update="store.updatePosition"
           />
@@ -97,6 +118,28 @@ function locate(pageNo?: number) {
               <div><strong>{{ issue.title }}</strong><p>{{ issue.detail }}</p></div>
               <i class="pi pi-arrow-right" />
             </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h3>跨页结论</h3><Tag :value="`${store.spreadConclusions.length} 对`" /></div>
+          <div class="conclusion-list">
+            <div v-for="sp in store.spreadConclusions" :key="sp.key" class="conclusion-row">
+              <Tag :value="sp.valid ? '照旧' : '重算'" :severity="sp.valid ? 'success' : 'warn'" />
+              <strong>P{{ sp.pages[0] }}–P{{ sp.pages[1] }}</strong>
+              <small>{{ sp.note }}</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h3>出血结论</h3><Tag :value="`书脊侧 ${store.requiredBleed}mm`" /></div>
+          <div class="conclusion-list">
+            <div v-for="b in store.bleedConclusions" :key="b.pageNo" class="conclusion-row">
+              <Tag :value="b.sufficient ? '足够' : '不足'" :severity="b.sufficient ? 'success' : 'danger'" />
+              <strong>P{{ b.pageNo }}</strong>
+              <small>实际 {{ b.actual }}mm / 要求 {{ b.required }}mm · {{ b.note }}</small>
+            </div>
           </div>
         </section>
       </aside>
@@ -136,6 +179,10 @@ function locate(pageNo?: number) {
 .validation-list button.warning > i:first-child { color: #bf7f2c; }
 .validation-list strong { font-size: 11px; }
 .validation-list p { margin: 4px 0 0; color: #738087; font-size: 10px; line-height: 1.45; }
+.conclusion-list { display: grid; gap: 6px; padding: 10px; }
+.conclusion-row { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; padding: 7px 8px; border: 1px solid #edf1f1; border-radius: 6px; }
+.conclusion-row strong { font-size: 11px; }
+.conclusion-row small { grid-column: 2; color: #8a979d; font-size: 9px; }
 @media (max-width: 1200px) { .imposition-grid { grid-template-columns: 200px minmax(0,1fr); } .right-panel { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; } }
 @media (max-width: 760px) { .imposition-grid { grid-template-columns: 1fr; } .right-panel { grid-template-columns: 1fr; } .pages-panel { max-height: 300px; } }
 </style>

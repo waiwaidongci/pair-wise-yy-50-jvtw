@@ -46,6 +46,7 @@ function save() {
             <div>
               <strong>{{ sampleFile }}</strong>
               <p>样张文件已关联当前拼版版本 {{ store.revision }}，包含 P1、P3、P7、P8 重点页面。</p>
+              <p class="basis-ref">色差依据放行来源 <code>{{ store.basisHash }}</code> · 工艺 {{ store.binding }} · 书脊侧出血 {{ store.requiredBleed }}mm</p>
               <label class="file-button"><i class="pi pi-upload" /> 替换样张照片<input type="file" accept="image/*,.pdf,.tif" style="display:none" @change="sampleFile = ($event.target as HTMLInputElement).files?.[0]?.name ?? sampleFile" /></label>
             </div>
           </div>
@@ -92,6 +93,8 @@ function save() {
 .print-sample strong { font-size: 16px; }
 .print-sample i { font-size: 9px; font-style: normal; }
 .sample-preview p { color: #68777d; font-size: 11px; line-height: 1.55; }
+.basis-ref { margin: 4px 0 8px; color: #5d7077; font-size: 10px; }
+.basis-ref code { padding: 2px 5px; border-radius: 4px; background: #eef3f3; color: #2c5c66; font-size: 10px; }
 .file-button { display: inline-flex; width: fit-content; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid #bdc9cb; border-radius: 6px; color: #38666d; background: white; cursor: pointer; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .proof-body label { display: grid; gap: 6px; color: #5e6e75; font-size: 11px; font-weight: 700; }
