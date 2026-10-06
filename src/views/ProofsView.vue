@@ -6,6 +6,7 @@ import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
+import Message from 'primevue/message'
 import { useImpositionStore, type Proof } from '../stores/imposition'
 
 const store = useImpositionStore()
@@ -13,39 +14,74 @@ const active = computed(() => store.proofs.find((proof) => proof.id === store.se
 const draft = ref<Proof>({ ...active.value })
 watch(active, (value) => (draft.value = { ...value }), { immediate: true })
 const sampleFile = ref('当前使用数字样张 v2_09025.tif')
+const reviewer = ref('林青 / 生产主管')
+
+function basisState(proof: Proof) {
+  return store.proofBasisState(proof)
+}
+function basisSeverity(state: string) {
+  return state === '依据完整' ? 'success' : 'warn'
+}
 
 function save() {
   store.updateProof(draft.value.id, draft.value)
+}
+
+function review(proofId: string) {
+  store.reviewProof(proofId, reviewer.value || '生产主管')
+  draft.value = { ...(active.value ?? draft.value) }
 }
 </script>
 
 <template>
   <section class="page">
     <div class="page-head">
-      <div><p class="eyebrow">PROOFING / 打样审批</p><h1>打样轮次与色彩反馈</h1><p class="muted">每轮记录样张、色差、修正说明与负责人决定，修改后生成新拼版版本。</p></div>
-      <Button label="新建打样轮次" icon="pi pi-plus" @click="store.createProof" />
+      <div><p class="eyebrow">PROOFING / 打样审批</p><h1>打样轮次与色彩反馈</h1><p class="muted">每轮打样必须带装订工艺依据并挂在当前放行来源 {{ store.revision }}（{{ store.release.binding }}）下；旧稿缺依据先待复核。</p></div>
+      <Button label="新建打样轮次" icon="pi pi-plus" @click="store.createProof()" />
     </div>
+
+    <Message v-if="store.pendingProofs.length" severity="warn" :closable="false" class="mb-3">
+      {{ store.pendingProofs.length }} 份打样记录缺少适用于 {{ store.release.binding }} 的工艺依据，当前放行来源保持「待复核」，复核补齐后才可锁定。
+    </Message>
 
     <div class="proof-layout">
       <section class="panel">
         <div class="panel-head"><h3>打样轮次</h3><Tag :value="`${store.proofs.length} 轮`" /></div>
         <div class="proof-list">
           <button v-for="proof in store.proofs.slice().reverse()" :key="proof.id" :class="{ active: proof.id === store.selectedProof }" @click="store.selectedProof = proof.id">
-            <div><strong>第 {{ proof.round }} 轮 · {{ proof.sample }}</strong><small>{{ proof.date }} · {{ proof.owner }}</small></div>
+            <div><strong>第 {{ proof.round }} 轮 · {{ proof.sample }}</strong><small>{{ proof.date }} · {{ proof.owner }} · 依据 {{ proof.bindingBasis ?? '缺失' }}</small></div>
             <span>ΔE {{ proof.deltaE }}</span>
-            <Tag :value="proof.decision" :severity="proof.decision === '通过' ? 'success' : proof.decision === '退回' ? 'danger' : 'warn'" />
+            <div class="tags">
+              <Tag :value="basisState(proof)" :severity="basisSeverity(basisState(proof))" />
+              <Tag :value="proof.decision" :severity="proof.decision === '通过' ? 'success' : proof.decision === '退回' ? 'danger' : 'warn'" />
+            </div>
           </button>
         </div>
       </section>
 
       <section class="panel proof-editor">
-        <div class="panel-head"><h3>{{ draft.id }} · 第 {{ draft.round }} 轮打样记录</h3><Tag :value="draft.decision" :severity="draft.decision === '通过' ? 'success' : draft.decision === '退回' ? 'danger' : 'warn'" /></div>
+        <div class="panel-head">
+          <h3>{{ draft.id }} · 第 {{ draft.round }} 轮打样记录</h3>
+          <div class="head-tags">
+            <Tag :value="`依据工艺：${draft.bindingBasis ?? '未登记'}`" :severity="draft.bindingBasis === store.release.binding ? 'success' : 'warn'" />
+            <Tag :value="draft.decision" :severity="draft.decision === '通过' ? 'success' : draft.decision === '退回' ? 'danger' : 'warn'" />
+          </div>
+        </div>
         <div v-if="active" class="proof-body">
+          <Message v-if="basisState(draft) !== '依据完整'" severity="warn" :closable="false">
+            {{ basisState(draft) }}：该轮打样{{ draft.bindingBasis ? `依据为 ${draft.bindingBasis}，与当前 ${store.release.binding} 不符` : '未登记装订工艺依据' }}，色差结论不能直接进入新导出包，请生产主管复核。
+          </Message>
+          <div class="review-row" v-if="basisState(draft) !== '依据完整'">
+            <label>复核人<InputText v-model="reviewer" /></label>
+            <Button label="复核确认并补齐工艺依据" icon="pi pi-check-square" severity="warn" @click="review(draft.id)" />
+          </div>
+          <p v-else-if="draft.reviewedAt" class="reviewed"><i class="pi pi-check-circle" /> {{ draft.reviewedAt }}</p>
+
           <div class="sample-preview">
             <div class="print-sample"><span>P1 / P8</span><strong>潮汐来信</strong><i>数字样张色靶</i></div>
             <div>
               <strong>{{ sampleFile }}</strong>
-              <p>样张文件已关联当前拼版版本 {{ store.revision }}，包含 P1、P3、P7、P8 重点页面。</p>
+              <p>样张文件已关联放行来源 {{ store.revision }}（{{ store.release.binding }}），包含 P1、P3、P7、P8 重点页面。</p>
               <label class="file-button"><i class="pi pi-upload" /> 替换样张照片<input type="file" accept="image/*,.pdf,.tif" style="display:none" @change="sampleFile = ($event.target as HTMLInputElement).files?.[0]?.name ?? sampleFile" /></label>
             </div>
           </div>
@@ -70,22 +106,28 @@ function save() {
         <div class="color-bars">
           <div v-for="color in ['Cyan','Magenta','Yellow','Black','PANTONE 2965 C']" :key="color"><i :class="color.toLowerCase().replaceAll(' ','-')" /><span>{{ color }}</span><strong>{{ color.includes('PANTONE') ? '1.2' : '0.8' }} ΔE</strong></div>
         </div>
-        <div class="threshold"><strong>通过阈值</strong><p>重点页面平均 ΔE ≤ 2.0，单点最高不超过 3.0。</p></div>
+        <div class="threshold"><strong>通过阈值</strong><p>重点页面平均 ΔE ≤ 2.0，单点最高不超过 3.0；色差结论仅在工艺依据与当前放行来源一致时有效。</p></div>
       </aside>
     </div>
   </section>
 </template>
 
 <style scoped>
+.mb-3 { margin-bottom: 12px; }
 .proof-layout { display: grid; grid-template-columns: 350px minmax(0,1fr) 300px; gap: 14px; align-items: start; }
 .proof-list { padding: 8px; }
-.proof-list button { display: grid; width: 100%; grid-template-columns: 1fr 58px auto; gap: 8px; align-items: center; padding: 11px; border: 0; border-radius: 7px; text-align: left; background: transparent; cursor: pointer; }
+.proof-list button { display: grid; width: 100%; grid-template-columns: 1fr 64px auto; gap: 8px; align-items: center; padding: 11px; border: 0; border-radius: 7px; text-align: left; background: transparent; cursor: pointer; }
 .proof-list button.active { background: #edf5f4; box-shadow: inset 3px 0 #337b79; }
 .proof-list strong, .proof-list small { display: block; }
 .proof-list strong { font-size: 12px; }
 .proof-list small { margin-top: 4px; color: #7a878e; font-size: 10px; }
 .proof-list > button > span { color: #506f75; font-family: monospace; font-weight: 700; }
+.tags { display: grid; gap: 4px; justify-items: end; }
+.head-tags { display: flex; gap: 6px; }
 .proof-body { display: grid; gap: 15px; padding: 18px; }
+.review-row { display: flex; align-items: flex-end; gap: 10px; padding: 12px; background: #fff8ee; border-radius: 7px; }
+.review-row label { display: grid; gap: 5px; color: #7a6a4f; font-size: 11px; font-weight: 700; }
+.reviewed { margin: 0; color: #3b7a5b; font-size: 11px; }
 .sample-preview { display: grid; grid-template-columns: 190px 1fr; gap: 16px; align-items: center; padding: 14px; background: #f4f6f5; }
 .print-sample { position: relative; display: grid; width: 150px; aspect-ratio: .72; place-items: center; padding: 12px; color: #dce9e8; background: linear-gradient(145deg,#173a4a,#306a6d); box-shadow: 0 8px 18px rgba(29,54,62,.18); }
 .print-sample span { position: absolute; top: 8px; left: 9px; font-size: 9px; }
